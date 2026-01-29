@@ -1,13 +1,22 @@
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { VisionaryState, MusicAnalysis } from './types';
 import { analyzeAudio, generateVisual } from './services/geminiService';
 import Visualizer from './components/Visualizer';
 
-const RECORDING_DURATION = 8000; 
+const RECORDING_DURATION = 9000; 
+
+const LOADING_MESSAGES = [
+  "Capturing sound waves...",
+  "Analyzing harmonic structures...",
+  "Searching global databases...",
+  "Interpreting emotional resonance...",
+  "Painting the visual landscape...",
+  "Finalizing your vision..."
+];
 
 const App: React.FC = () => {
   const [mounted, setMounted] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(0);
   const [state, setState] = useState<VisionaryState>({
     isRecording: false,
     isAnalyzing: false,
@@ -21,16 +30,24 @@ const App: React.FC = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  // Effect om te bevestigen dat de app geladen is (voorkomt zwart scherm op iPhone)
   useEffect(() => {
     setMounted(true);
-    console.log("App component mounted successfully");
   }, []);
+
+  useEffect(() => {
+    let interval: number;
+    if (state.isAnalyzing) {
+      interval = window.setInterval(() => {
+        setLoadingStep(prev => (prev + 1) % LOADING_MESSAGES.length);
+      }, 2500);
+    }
+    return () => clearInterval(interval);
+  }, [state.isAnalyzing]);
 
   const startListening = useCallback(async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Microfoon toegang niet ondersteund of geblokkeerd. Gebruik HTTPS en controleer je instellingen.");
+        throw new Error("Microphone access is not supported in this browser.");
       }
 
       setState(prev => ({ 
@@ -39,25 +56,14 @@ const App: React.FC = () => {
         result: null, 
         imageUrl: null, 
         isRecording: true, 
-        countdown: RECORDING_DURATION / 1000 
+        countdown: Math.floor(RECORDING_DURATION / 1000) 
       }));
       
-      const audioStream = await navigator.mediaDevices.getUserMedia({ 
-        audio: true 
-      });
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setStream(audioStream);
 
-      // Compatibiliteit check voor MediaRecorder MIME types
-      let mimeType = '';
-      const types = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
-      for (const t of types) {
-        if (MediaRecorder.isTypeSupported(t)) {
-          mimeType = t;
-          break;
-        }
-      }
-
-      const mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      const mediaRecorder = new MediaRecorder(audioStream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -66,16 +72,13 @@ const App: React.FC = () => {
       };
 
       mediaRecorder.onstop = async () => {
-        const finalMimeType = mediaRecorder.mimeType || 'audio/mp4';
-        const audioBlob = new Blob(chunksRef.current, { type: finalMimeType });
-        
+        const audioBlob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType });
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
         reader.onloadend = async () => {
           const base64Data = (reader.result as string).split(',')[1];
-          processAudio(base64Data, finalMimeType);
+          processAudio(base64Data, mediaRecorder.mimeType);
         };
-        
         audioStream.getTracks().forEach(track => track.stop());
         setStream(null);
       };
@@ -103,7 +106,7 @@ const App: React.FC = () => {
       console.error("Mic Error:", err);
       setState(prev => ({ 
         ...prev, 
-        error: err.message || "Microfoon toegang geweigerd.", 
+        error: "Microphone access denied or unavailable.", 
         isRecording: false 
       }));
     }
@@ -111,16 +114,23 @@ const App: React.FC = () => {
 
   const processAudio = async (base64Audio: string, mimeType: string) => {
     try {
+      // Step 1: Analyze audio and search for details
       const analysis = await analyzeAudio(base64Audio, mimeType);
-      setState(prev => ({ ...prev, result: analysis }));
       
-      const imageUrl = await generateVisual(analysis.visualPrompt);
-      setState(prev => ({ ...prev, imageUrl, isAnalyzing: false }));
+      // Step 2: Generate artistic visual based on the analysis
+      const generatedImage = await generateVisual(analysis.visualPrompt);
+      
+      setState(prev => ({ 
+        ...prev, 
+        result: analysis,
+        imageUrl: generatedImage,
+        isAnalyzing: false 
+      }));
     } catch (err: any) {
       console.error("Process Error:", err);
       setState(prev => ({ 
         ...prev, 
-        error: "Kon het nummer niet analyseren. Probeer het opnieuw.", 
+        error: "Failed to interpret the music. Please try again with clearer audio.", 
         isAnalyzing: false 
       }));
     }
@@ -129,144 +139,154 @@ const App: React.FC = () => {
   if (!mounted) return null;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0c] text-white flex flex-col items-center justify-start p-4 md:p-8 font-sans selection:bg-blue-500/30">
-      {/* Achtergrond Decoratie */}
+    <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-start p-6 md:p-12 font-sans overflow-x-hidden">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 blur-[120px] rounded-full"></div>
+        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-blue-900/10 blur-[160px] rounded-full animate-pulse"></div>
+        <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-purple-900/10 blur-[160px] rounded-full animate-pulse"></div>
       </div>
 
-      <header className="w-full max-w-5xl z-10 flex justify-between items-center mb-8 md:mb-12">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl flex items-center justify-center">
-            <i className="fa-solid fa-compact-disc text-blue-500 text-xl animate-[spin_4s_linear_infinite]"></i>
+      <header className="w-full max-w-6xl z-10 flex justify-between items-center mb-12 animate-in fade-in slide-in-from-top-4 duration-700">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/5 backdrop-blur-3xl border border-white/10 rounded-2xl flex items-center justify-center shadow-2xl">
+            <i className="fa-solid fa-compact-disc text-blue-500 text-2xl animate-[spin_4s_linear_infinite]"></i>
           </div>
           <div>
-            <h1 className="text-lg font-black tracking-tighter uppercase leading-none">Music Visionary</h1>
-            <p className="text-[9px] text-zinc-500 font-bold tracking-[0.2em] uppercase mt-1">Cross-Platform Sync</p>
+            <h1 className="text-xl font-black tracking-tight uppercase">Music Visionary</h1>
+            <p className="text-[10px] text-zinc-500 font-bold tracking-[0.3em] uppercase">Visual Sonic AI</p>
           </div>
         </div>
       </header>
 
-      <main className="w-full max-w-4xl z-10 flex flex-col items-center flex-1">
+      <main className="w-full max-w-5xl z-10 flex flex-col items-center flex-1">
         {!state.result && !state.isAnalyzing && !state.isRecording && (
-          <div className="text-center py-20 md:py-32 animate-in fade-in zoom-in duration-700">
-            <h2 className="text-4xl md:text-7xl font-black mb-6 tracking-tight leading-[0.9]">
-              Luister.<br/>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-white to-purple-400">Visualiseer.</span>
+          <div className="text-center py-24 md:py-40 max-w-2xl animate-in fade-in zoom-in-95 duration-1000">
+            <h2 className="text-5xl md:text-8xl font-black mb-8 tracking-tighter leading-[0.85]">
+              See what your <br/>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-200 to-purple-400">Music Feels Like.</span>
             </h2>
-            <p className="text-zinc-500 text-base md:text-lg mb-10 max-w-md mx-auto font-medium">
-              Ontdek de artiest en zie de muziek tot leven komen met AI.
+            <p className="text-zinc-400 text-lg md:text-xl mb-12 font-medium">
+              A sensory fusion of audio analysis and generative art. Let Gemini listen, identify, and paint your soundscape.
             </p>
             <button 
               onClick={startListening}
-              className="group relative px-10 py-5 bg-white text-black font-black rounded-2xl text-lg hover:scale-105 transition-all shadow-xl active:scale-95 overflow-hidden"
+              className="group relative px-12 py-6 bg-white text-black font-black rounded-3xl text-xl hover:scale-105 transition-all shadow-xl active:scale-95 overflow-hidden"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-white opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <span className="relative flex items-center gap-3">
-                <i className="fa-solid fa-microphone-lines"></i>
-                START HERKENNING
+              <span className="relative flex items-center gap-4">
+                <i className="fa-solid fa-microphone-lines animate-pulse"></i>
+                CAPTURE SOUND
               </span>
             </button>
           </div>
         )}
 
         {state.isRecording && (
-          <div className="w-full max-w-md flex flex-col items-center gap-8 py-12">
+          <div className="w-full max-w-xl flex flex-col items-center gap-10 py-20 animate-in fade-in slide-in-from-bottom-8">
             <div className="relative">
-              <div className="w-36 h-36 bg-blue-600/20 rounded-full flex items-center justify-center animate-pulse border-2 border-blue-500/30">
-                <div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(37,99,235,0.4)]">
-                   <i className="fa-solid fa-bolt-lightning text-3xl"></i>
+              <div className="w-44 h-44 bg-blue-600/10 rounded-full flex items-center justify-center border border-blue-500/20">
+                <div className="w-28 h-28 bg-blue-600 rounded-full flex items-center justify-center shadow-[0_0_80px_rgba(37,99,235,0.4)] animate-pulse">
+                   <i className="fa-solid fa-wave-square text-4xl"></i>
                 </div>
               </div>
-              <div className="absolute -top-1 -right-1 bg-white text-black text-base font-black w-10 h-10 rounded-full flex items-center justify-center border-4 border-[#0a0a0c]">
+              <div className="absolute -top-2 -right-2 bg-white text-black text-xl font-black w-12 h-12 rounded-full flex items-center justify-center border-4 border-[#050505]">
                 {state.countdown}
               </div>
             </div>
             <div className="text-center">
-              <h3 className="text-xl font-black mb-1">Ik luister...</h3>
-              <p className="text-zinc-500 font-bold uppercase tracking-widest text-[9px]">Houd je microfoon bij de bron</p>
+              <h3 className="text-2xl font-black mb-2 tracking-tight uppercase">Recording Session</h3>
+              <p className="text-zinc-500 font-bold uppercase tracking-widest text-[10px]">Analyzing acoustic environment...</p>
             </div>
             <Visualizer stream={stream} isActive={state.isRecording} />
           </div>
         )}
 
         {state.isAnalyzing && (
-          <div className="w-full max-w-md flex flex-col items-center gap-6 py-12">
-            <div className="w-full h-1 bg-zinc-900 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-blue-600 via-white to-purple-600 animate-[loading_1.5s_linear_infinite]" style={{ width: '40%' }}></div>
+          <div className="w-full max-w-lg flex flex-col items-center gap-10 py-32 text-center">
+            <div className="w-full h-[2px] bg-zinc-900 rounded-full overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-[shimmer_2s_infinite]"></div>
             </div>
-            <div className="text-center">
-              <h3 className="text-lg font-black mb-1">Analyse bezig...</h3>
-              <p className="text-zinc-500 text-xs">Gemini zoekt de juiste sfeer en beelden.</p>
+            <div>
+              <h3 className="text-xl font-black mb-3 tracking-wide text-blue-400">{LOADING_MESSAGES[loadingStep]}</h3>
+              <p className="text-zinc-500 text-sm font-medium">Synthesizing audio features into art...</p>
             </div>
           </div>
         )}
 
         {state.error && (
-          <div className="w-full max-w-md p-6 bg-red-500/5 border border-red-500/20 rounded-3xl flex flex-col items-center gap-4 text-center shadow-xl">
-            <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center text-red-500">
-              <i className="fa-solid fa-triangle-exclamation text-xl"></i>
+          <div className="w-full max-w-md p-10 bg-red-500/5 border border-red-500/20 rounded-[2.5rem] flex flex-col items-center gap-6 text-center backdrop-blur-3xl animate-in zoom-in-95">
+            <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-500">
+              <i className="fa-solid fa-bolt text-2xl"></i>
             </div>
             <div>
-              <p className="font-black text-base mb-1">Oeps!</p>
-              <p className="text-[11px] text-zinc-400 leading-relaxed">{state.error}</p>
+              <p className="font-black text-xl mb-2 uppercase">Audio Interference</p>
+              <p className="text-sm text-zinc-400 leading-relaxed">{state.error}</p>
             </div>
-            <button 
-              onClick={startListening} 
-              className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl font-black transition-all border border-white/10 text-xs"
-            >
-              OPNIEUW
+            <button onClick={startListening} className="w-full py-4 bg-white text-black hover:bg-zinc-200 rounded-2xl font-black transition-all text-xs uppercase tracking-widest">
+              Try Again
             </button>
           </div>
         )}
 
         {state.result && state.imageUrl && (
-          <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in slide-in-from-bottom-8 duration-700">
-            <div className="lg:col-span-5 flex flex-col gap-5">
-               <div className="relative group rounded-[1.5rem] overflow-hidden shadow-2xl border border-white/5 aspect-square">
+          <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in fade-in slide-in-from-bottom-12 duration-1000 ease-out pb-20">
+            <div className="lg:col-span-5 flex flex-col gap-6">
+               <div className="relative group rounded-[2rem] overflow-hidden shadow-2xl border border-white/5 aspect-square bg-zinc-900">
                 <img 
                   src={state.imageUrl} 
-                  alt="AI Art" 
-                  className="w-full h-full object-cover" 
+                  alt="AI Sonic Interpretation" 
+                  className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" 
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
-                <div className="absolute bottom-6 left-6 right-6">
-                  <p className="text-blue-400 text-[9px] font-black uppercase tracking-[0.2em] mb-1">{state.result.genre}</p>
-                  <h3 className="text-2xl font-black leading-none mb-1 tracking-tighter uppercase">{state.result.title}</h3>
-                  <p className="text-white/70 font-bold text-sm">{state.result.artist}</p>
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-90"></div>
+                <div className="absolute bottom-8 left-8 right-8">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="px-2.5 py-1 bg-blue-500/20 text-blue-400 text-[9px] font-black uppercase tracking-widest rounded-lg border border-blue-500/20">
+                      {state.result.genre}
+                    </span>
+                    {state.result.releaseDate && (
+                      <span className="px-2.5 py-1 bg-white/10 text-white/60 text-[9px] font-black uppercase tracking-widest rounded-lg border border-white/10">
+                        {state.result.releaseDate}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-3xl font-black leading-tight mb-1 tracking-tighter uppercase">{state.result.title}</h3>
+                  <p className="text-white/50 font-bold text-base tracking-wide uppercase">{state.result.artist}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <a href={state.result.spotifyUrl || '#'} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 py-4 bg-[#1DB954] text-black text-xs font-black rounded-xl transition-all hover:brightness-110">
-                  <i className="fa-brands fa-spotify"></i> SPOTIFY
+              <div className="flex gap-4">
+                <a href={state.result.spotifyUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-3 py-5 bg-[#1DB954] text-black text-[10px] font-black rounded-2xl hover:brightness-110 transition-all uppercase tracking-widest">
+                  <i className="fa-brands fa-spotify text-lg"></i> Spotify
                 </a>
-                <a href={state.result.youtubeUrl || '#'} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 py-4 bg-white text-black text-xs font-black rounded-xl transition-all hover:brightness-90">
-                  <i className="fa-brands fa-youtube"></i> YOUTUBE
+                <a href={state.result.youtubeUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-3 py-5 bg-white text-black text-[10px] font-black rounded-2xl hover:bg-zinc-200 transition-all uppercase tracking-widest">
+                  <i className="fa-brands fa-youtube text-lg"></i> YouTube
                 </a>
               </div>
             </div>
 
             <div className="lg:col-span-7 flex flex-col gap-6">
-              <div className="bg-white/[0.02] backdrop-blur-xl p-6 md:p-8 rounded-[1.5rem] border border-white/5 flex flex-col shadow-xl flex-1">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2 text-white font-black text-[10px] uppercase tracking-widest">
-                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
-                    Lyrics & Sfeer
-                  </div>
+              <div className="bg-white/[0.02] backdrop-blur-3xl p-10 md:p-14 rounded-[2.5rem] border border-white/5 flex flex-col shadow-2xl flex-1 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8 opacity-10">
+                  <i className="fa-solid fa-quote-right text-8xl"></i>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto max-h-[300px] md:max-h-[400px] pr-2 custom-scrollbar">
-                  <p className="text-lg md:text-xl font-serif leading-relaxed text-zinc-300 italic whitespace-pre-wrap">
+                <div className="flex items-center gap-3 text-blue-400 font-black text-[11px] uppercase tracking-[0.25em] mb-12">
+                  <i className="fa-solid fa-wand-magic-sparkles"></i> Lyric Interpretation
+                </div>
+                
+                <div className="flex-1 flex flex-col justify-center">
+                  <p className="text-3xl md:text-4xl font-serif leading-snug text-zinc-100 italic mb-8">
                     "{state.result.lyrics}"
                   </p>
+                  <div className="flex flex-wrap gap-3">
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] bg-white/5 px-4 py-2 rounded-xl border border-white/5">
+                      Vibe: {state.result.mood}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-white/5 flex justify-between items-center">
-                   <button onClick={startListening} className="w-full py-3 bg-white/5 hover:bg-white text-zinc-500 hover:text-black rounded-xl flex items-center justify-center gap-3 transition-all border border-white/10 font-black text-xs uppercase">
-                    <i className="fa-solid fa-rotate-right"></i>
-                    Nieuw nummer
+                <div className="mt-12 pt-10 border-t border-white/5">
+                  <button onClick={startListening} className="w-full py-6 bg-white/5 hover:bg-white text-white hover:text-black rounded-2xl flex items-center justify-center gap-4 transition-all border border-white/10 font-black text-xs uppercase tracking-[0.3em]">
+                    <i className="fa-solid fa-rotate"></i> New Exploration
                   </button>
                 </div>
               </div>
@@ -275,17 +295,18 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <footer className="py-6 text-zinc-800 text-[8px] font-black uppercase tracking-[0.3em] text-center">
-        Powered by Gemini &bull; 2025
+      <footer className="py-12 text-zinc-800 text-[10px] font-black uppercase tracking-[0.5em] text-center mt-auto w-full border-t border-white/[0.02]">
+        Powered by Gemini 3 Pro & 2.5 Flash &bull; Est. 2025
       </footer>
 
       <style>{`
-        @keyframes loading {
-          0% { transform: translateX(-150%); }
-          100% { transform: translateX(250%); }
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
         }
-        .custom-scrollbar::-webkit-scrollbar { width: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
       `}</style>
     </div>
   );
