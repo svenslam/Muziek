@@ -1,0 +1,7 @@
+{
+  "name": "Music Visionary",
+  "description": "An AI-powered music analyzer that listens to your environment, captures the vibe of the music, and generates matching visual art and poetic text.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
