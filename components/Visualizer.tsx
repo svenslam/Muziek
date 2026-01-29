@@ -7,8 +7,9 @@ interface VisualizerProps {
 }
 
 const Visualizer: React.FC<VisualizerProps> = ({ stream, isActive }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Fixed: animationRef was initialized without an argument, causing the "Expected 1 arguments, but got 0" error.
+  const animationRef = useRef<number | undefined>(undefined);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
