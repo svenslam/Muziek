@@ -1,13 +1,12 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { MusicAnalysis } from "../types";
 
-export async function analyzeAudio(base64Audio: string): Promise<MusicAnalysis> {
+export async function analyzeAudio(base64Audio: string, mimeType: string): Promise<MusicAnalysis> {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = 'gemini-3-flash-preview';
   
-  // Prompt modified to request a clear, tag-based format for manual extraction.
-  // This avoids JSON parsing issues which can occur when using the googleSearch tool due to citations.
+  // We sturen het daadwerkelijke mimeType mee naar Gemini
   const prompt = `Act as a world-class music identification engine. 
   1. Identify the song title, artist, and genre from this audio snippet.
   2. Use Google Search to find:
@@ -33,7 +32,7 @@ export async function analyzeAudio(base64Audio: string): Promise<MusicAnalysis> 
       parts: [
         {
           inlineData: {
-            mimeType: 'audio/wav',
+            mimeType: mimeType, // Gebruik het dynamische mimeType (bijv. audio/mp4 of audio/webm)
             data: base64Audio,
           },
         },
@@ -42,15 +41,12 @@ export async function analyzeAudio(base64Audio: string): Promise<MusicAnalysis> 
     },
     config: {
       tools: [{ googleSearch: {} }],
-      // Per Search Grounding rules: "The output response.text may not be in JSON format; do not attempt to parse it as JSON."
-      // Therefore, we do not set responseMimeType or responseSchema here.
     },
   });
 
   const text = response.text || "";
-  if (!text) throw new Error("Could not identify the song.");
+  if (!text) throw new Error("Kon geen tekst ophalen van de AI.");
   
-  // Manual extraction of fields from the text response as parsing JSON is prohibited with googleSearch.
   const extractField = (field: string) => {
     const lines = text.split('\n');
     const line = lines.find(l => l.toLowerCase().startsWith(field.toLowerCase()));
@@ -68,20 +64,19 @@ export async function analyzeAudio(base64Audio: string): Promise<MusicAnalysis> 
   const youtubeUrl = extractField("YoutubeUrl");
   const visualPrompt = extractField("VisualPrompt");
 
-  // Extract grounding URLs for credits as required by Search Grounding rules
   const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
     ?.filter(chunk => chunk.web)
     ?.map(chunk => ({
-      title: chunk.web?.title || "Source",
+      title: chunk.web?.title || "Bron",
       uri: chunk.web?.uri || ""
     })) || [];
 
   return {
-    artist: artist || "Unknown Artist",
-    title: title || "Unknown Title",
-    lyrics: lyrics || "Lyrics snippet unavailable.",
-    mood: mood || "Mysterious",
-    genre: genre || "Unknown",
+    artist: artist || "Onbekende Artiest",
+    title: title || "Onbekend Nummer",
+    lyrics: lyrics || "Geen lyrics beschikbaar.",
+    mood: mood || "Sfeervol",
+    genre: genre || "Onbekend",
     visualPrompt: visualPrompt || `Artistic visualization of a song by ${artist}`,
     releaseDate,
     spotifyUrl,
@@ -97,7 +92,7 @@ export async function generateVisual(prompt: string): Promise<string> {
   const response = await ai.models.generateContent({
     model,
     contents: {
-      parts: [{ text: `High-quality, artistic interpretation of the song vibe: ${prompt}. Professional album cover style, vibrant, high-fidelity.` }],
+      parts: [{ text: `High-quality album cover art: ${prompt}. Cinematic, professional lighting.` }],
     },
     config: {
       imageConfig: {
@@ -107,7 +102,6 @@ export async function generateVisual(prompt: string): Promise<string> {
   });
 
   let imageUrl = "";
-  // Iterating through all parts to find the image part, as per Gemini image generation guidelines.
   for (const part of response.candidates?.[0]?.content?.parts || []) {
     if (part.inlineData) {
       imageUrl = `data:image/png;base64,${part.inlineData.data}`;
@@ -115,6 +109,6 @@ export async function generateVisual(prompt: string): Promise<string> {
     }
   }
 
-  if (!imageUrl) throw new Error("Failed to generate image");
+  if (!imageUrl) throw new Error("Geen afbeelding gegenereerd.");
   return imageUrl;
 }

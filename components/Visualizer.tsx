@@ -9,12 +9,21 @@ interface VisualizerProps {
 const Visualizer: React.FC<VisualizerProps> = ({ stream, isActive }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     if (!isActive || !stream || !canvasRef.current) return;
 
-    // Fix: Added an empty options object to satisfy AudioContext constructor signature requiring 1 argument in this environment
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({});
+    // Added an options object with sampleRate to satisfy the environment's requirement for at least one argument in the AudioContext constructor.
+    const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+    const audioContext = new AudioContextClass({ sampleRate: 44100 });
+    audioCtxRef.current = audioContext;
+
+    // iOS fix: resume context
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+
     const source = audioContext.createMediaStreamSource(stream);
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 256;
@@ -31,16 +40,12 @@ const Visualizer: React.FC<VisualizerProps> = ({ stream, isActive }) => {
       analyser.getByteFrequencyData(dataArray);
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const barWidth = (canvas.width / bufferLength) * 2.5;
+      const barWidth = (canvas.width / bufferLength) * 2;
       let x = 0;
 
       for (let i = 0; i < bufferLength; i++) {
         const barHeight = (dataArray[i] / 255) * canvas.height;
-        const r = 50 + (i * 2);
-        const g = 100 + (i * 1);
-        const b = 255;
-
-        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.fillStyle = `rgba(59, 130, 246, ${dataArray[i] / 255 + 0.2})`;
         ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
         x += barWidth + 1;
       }
@@ -50,7 +55,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ stream, isActive }) => {
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      audioContext.close();
+      if (audioCtxRef.current) audioCtxRef.current.close();
     };
   }, [isActive, stream]);
 
@@ -58,8 +63,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ stream, isActive }) => {
     <canvas 
       ref={canvasRef} 
       width={400} 
-      height={100} 
-      className="w-full h-24 rounded-lg bg-zinc-900/30 opacity-60"
+      height={80} 
+      className="w-full h-20 rounded-xl bg-white/5"
     />
   );
 };
