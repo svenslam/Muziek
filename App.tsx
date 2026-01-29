@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { VisionaryState, MusicAnalysis } from './types';
-import { analyzeAudio, generateVisual } from './services/geminiService';
+import { analyzeAudio, generateVisual, searchByLyrics } from './services/geminiService';
 import Visualizer from './components/Visualizer';
 
 const RECORDING_DURATION = 9000; 
@@ -17,6 +17,8 @@ const LOADING_MESSAGES = [
 const App: React.FC = () => {
   const [mounted, setMounted] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [mode, setMode] = useState<'home' | 'recording' | 'lyrics'>('home');
+  const [lyricsInput, setLyricsInput] = useState('');
   const [state, setState] = useState<VisionaryState>({
     isRecording: false,
     isAnalyzing: false,
@@ -50,6 +52,7 @@ const App: React.FC = () => {
         throw new Error("Microphone access is not supported in this browser.");
       }
 
+      setMode('recording');
       setState(prev => ({ 
         ...prev, 
         error: null, 
@@ -109,17 +112,28 @@ const App: React.FC = () => {
         error: "Microphone access denied or unavailable.", 
         isRecording: false 
       }));
+      setMode('home');
     }
   }, []);
 
+  const handleLyricsSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lyricsInput.trim()) return;
+
+    setState(prev => ({ ...prev, isAnalyzing: true, error: null, result: null, imageUrl: null }));
+    try {
+      const analysis = await searchByLyrics(lyricsInput);
+      const generatedImage = await generateVisual(analysis.visualPrompt);
+      setState(prev => ({ ...prev, result: analysis, imageUrl: generatedImage, isAnalyzing: false }));
+    } catch (err: any) {
+      setState(prev => ({ ...prev, error: "Could not find song from lyrics.", isAnalyzing: false }));
+    }
+  };
+
   const processAudio = async (base64Audio: string, mimeType: string) => {
     try {
-      // Step 1: Analyze audio and search for details
       const analysis = await analyzeAudio(base64Audio, mimeType);
-      
-      // Step 2: Generate artistic visual based on the analysis
       const generatedImage = await generateVisual(analysis.visualPrompt);
-      
       setState(prev => ({ 
         ...prev, 
         result: analysis,
@@ -136,6 +150,19 @@ const App: React.FC = () => {
     }
   };
 
+  const reset = () => {
+    setMode('home');
+    setState({
+      isRecording: false,
+      isAnalyzing: false,
+      error: null,
+      result: null,
+      imageUrl: null,
+      countdown: 0,
+    });
+    setLyricsInput('');
+  };
+
   if (!mounted) return null;
 
   return (
@@ -146,7 +173,7 @@ const App: React.FC = () => {
       </div>
 
       <header className="w-full max-w-6xl z-10 flex justify-between items-center mb-12 animate-in fade-in slide-in-from-top-4 duration-700">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 cursor-pointer" onClick={reset}>
           <div className="w-12 h-12 bg-white/5 backdrop-blur-3xl border border-white/10 rounded-2xl flex items-center justify-center shadow-2xl">
             <i className="fa-solid fa-compact-disc text-blue-500 text-2xl animate-[spin_4s_linear_infinite]"></i>
           </div>
@@ -155,28 +182,70 @@ const App: React.FC = () => {
             <p className="text-[10px] text-zinc-500 font-bold tracking-[0.3em] uppercase">Visual Sonic AI</p>
           </div>
         </div>
+        {state.result && (
+          <button onClick={reset} className="px-6 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">
+            New Vision
+          </button>
+        )}
       </header>
 
       <main className="w-full max-w-5xl z-10 flex flex-col items-center flex-1">
-        {!state.result && !state.isAnalyzing && !state.isRecording && (
-          <div className="text-center py-24 md:py-40 max-w-2xl animate-in fade-in zoom-in-95 duration-1000">
+        {mode === 'home' && !state.result && !state.isAnalyzing && (
+          <div className="text-center py-20 md:py-32 max-w-2xl animate-in fade-in zoom-in-95 duration-1000">
             <h2 className="text-5xl md:text-8xl font-black mb-8 tracking-tighter leading-[0.85]">
-              See what your <br/>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-200 to-purple-400">Music Feels Like.</span>
+              Visualize your <br/>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-200 to-purple-400">Atmosphere.</span>
             </h2>
             <p className="text-zinc-400 text-lg md:text-xl mb-12 font-medium">
-              A sensory fusion of audio analysis and generative art. Let Gemini listen, identify, and paint your soundscape.
+              Listen to your environment or search by lyrics. Let Gemini identify and paint your sonic landscape.
             </p>
-            <button 
-              onClick={startListening}
-              className="group relative px-12 py-6 bg-white text-black font-black rounded-3xl text-xl hover:scale-105 transition-all shadow-xl active:scale-95 overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-white opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <span className="relative flex items-center gap-4">
-                <i className="fa-solid fa-microphone-lines animate-pulse"></i>
-                CAPTURE SOUND
-              </span>
+            
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <button 
+                onClick={startListening}
+                className="group relative w-full sm:w-auto px-10 py-5 bg-white text-black font-black rounded-2xl text-lg hover:scale-105 transition-all shadow-xl active:scale-95 overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-white opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <span className="relative flex items-center justify-center gap-3">
+                  <i className="fa-solid fa-microphone-lines animate-pulse"></i>
+                  LISTEN
+                </span>
+              </button>
+              
+              <button 
+                onClick={() => setMode('lyrics')}
+                className="w-full sm:w-auto px-10 py-5 bg-white/5 border border-white/10 text-white font-black rounded-2xl text-lg hover:bg-white/10 transition-all active:scale-95"
+              >
+                <span className="flex items-center justify-center gap-3">
+                  <i className="fa-solid fa-keyboard text-zinc-400"></i>
+                  LYRICS
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {mode === 'lyrics' && !state.result && !state.isAnalyzing && (
+          <div className="w-full max-w-2xl py-20 animate-in fade-in slide-in-from-bottom-8">
+            <button onClick={() => setMode('home')} className="mb-8 flex items-center gap-2 text-zinc-500 hover:text-white transition-all font-black text-[10px] uppercase tracking-widest">
+              <i className="fa-solid fa-arrow-left"></i> Back
             </button>
+            <h3 className="text-4xl font-black mb-6 tracking-tight uppercase">Search by Lyrics</h3>
+            <form onSubmit={handleLyricsSearch} className="relative">
+              <textarea 
+                value={lyricsInput}
+                onChange={(e) => setLyricsInput(e.target.value)}
+                placeholder="Type some lyrics here... (e.g., 'Starman waiting in the sky')"
+                className="w-full h-48 bg-white/[0.03] border border-white/10 rounded-3xl p-8 text-xl font-medium focus:outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 transition-all resize-none"
+              />
+              <button 
+                type="submit"
+                disabled={!lyricsInput.trim()}
+                className="absolute bottom-6 right-6 px-8 py-3 bg-blue-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-black rounded-xl hover:bg-blue-500 transition-all flex items-center gap-2"
+              >
+                IDENTIFY <i className="fa-solid fa-magnifying-glass"></i>
+              </button>
+            </form>
           </div>
         )}
 
@@ -218,11 +287,11 @@ const App: React.FC = () => {
               <i className="fa-solid fa-bolt text-2xl"></i>
             </div>
             <div>
-              <p className="font-black text-xl mb-2 uppercase">Audio Interference</p>
+              <p className="font-black text-xl mb-2 uppercase">Analysis Error</p>
               <p className="text-sm text-zinc-400 leading-relaxed">{state.error}</p>
             </div>
-            <button onClick={startListening} className="w-full py-4 bg-white text-black hover:bg-zinc-200 rounded-2xl font-black transition-all text-xs uppercase tracking-widest">
-              Try Again
+            <button onClick={reset} className="w-full py-4 bg-white text-black hover:bg-zinc-200 rounded-2xl font-black transition-all text-xs uppercase tracking-widest">
+              Return to Home
             </button>
           </div>
         )}
@@ -285,7 +354,7 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="mt-12 pt-10 border-t border-white/5">
-                  <button onClick={startListening} className="w-full py-6 bg-white/5 hover:bg-white text-white hover:text-black rounded-2xl flex items-center justify-center gap-4 transition-all border border-white/10 font-black text-xs uppercase tracking-[0.3em]">
+                  <button onClick={reset} className="w-full py-6 bg-white/5 hover:bg-white text-white hover:text-black rounded-2xl flex items-center justify-center gap-4 transition-all border border-white/10 font-black text-xs uppercase tracking-[0.3em]">
                     <i className="fa-solid fa-rotate"></i> New Exploration
                   </button>
                 </div>
